@@ -80,8 +80,11 @@ print(f\"  IP: {d.get('ip')}  ({d.get('city','')}, {d.get('country')})  {d.get('
   echo -e "${C_B}◆ API 连通 + 封禁检测（5次）${C_0}"
   local OK=0; local BEST_TTFB=99
   local BODY=/tmp/probe_body.$$
+  # 部分源站有 WAF/防护, 会拦 curl 默认 UA（"请求携带恶意参数已被拦截"）— 用浏览器 UA 试探
   for i in 1 2 3 4 5; do
-    local R=$(curl -o "$BODY" -s -w "%{http_code} %{time_starttransfer}" --max-time 8 "$EMBY/emby/system/info/public" 2>/dev/null)
+    local R=$(curl -o "$BODY" -s -w "%{http_code} %{time_starttransfer}" \
+      -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36" \
+      -L --max-redirs 3 --max-time 8 "$EMBY/emby/system/info/public" 2>/dev/null)
     local CODE=${R%% *}; local TTFB=${R##* }
     if [ "$CODE" = 200 ]; then
       OK=$((OK+1))
@@ -90,9 +93,14 @@ print(f\"  IP: {d.get('ip')}  ({d.get('city','')}, {d.get('country')})  {d.get('
   done
   echo "  成功率: $OK/5   最优 TTFB: ${BEST_TTFB}s"
   if [ $OK -eq 0 ]; then
-    echo "  响应体: $(head -c 120 "$BODY" 2>/dev/null)"
-    echo -e "  ${C_R}✗ 全部失败: 地区封禁 / 服务异常${C_0}"
-    echo -e "  ${C_BD}结论: ✗ 不可用${C_0}"; rm -f "$BODY"; return 1
+    if rg -qi '请求拦截|已被拦截|Just a moment|challenge' "$BODY" 2>/dev/null; then
+      echo -e "  ${C_Y}⚠ 源站 WAF 拦截探测请求（页面: 请求拦截/challenge）${C_0}"
+      echo -e "  ${C_Y}  → 不代表封地区; 真实 Emby 客户端带正常 UA/参数可能可过${C_0}"
+    else
+      echo "  响应体: $(head -c 120 "$BODY" 2>/dev/null)"
+      echo -e "  ${C_R}✗ 全部失败: 地区封禁 / 服务异常${C_0}"
+    fi
+    echo -e "  ${C_BD}结论: ⚠ 受限/不可用${C_0}"; rm -f "$BODY"; return 2
   elif [ $OK -lt 5 ]; then
     echo -e "  ${C_Y}⚠ 有失败采样, 链路不稳定${C_0}"
   fi
@@ -150,6 +158,8 @@ echo "$LINE"
 printf "%s\n" "${RESULTS[@]}" | sort -t'|' -k1,1n -k2,2g | while IFS='|' read -r code ttfb url; do
   if [ "$code" = "0" ]; then
     echo -e "  ${C_G}✓${C_0} $url  TTFB=${ttfb}s"
+  elif [ "$code" = "2" ]; then
+    echo -e "  ${C_Y}⚠${C_0} $url  WAF 拦截探测（客户端可能可用）"
   else
     echo -e "  ${C_R}✗${C_0} $url  不可用"
   fi
