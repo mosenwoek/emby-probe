@@ -80,10 +80,10 @@ print(f\"  IP: {d.get('ip')}  ({d.get('city','')}, {d.get('country')})  {d.get('
   echo -e "${C_B}◆ API 连通 + 封禁检测（5次）${C_0}"
   local OK=0; local BEST_TTFB=99
   local BODY=/tmp/probe_body.$$
-  # 部分源站有 WAF/防护, 会拦 curl 默认 UA（"请求携带恶意参数已被拦截"）— 用浏览器 UA 试探
+  # 部分源站 WAF 拦浏览器/curl UA（"请求携带恶意参数已被拦截"）— 用 SenPlayer UA（Emby 播放器, 封浏览器 UA 的服也放行播放器客户端）
   for i in 1 2 3 4 5; do
     local R=$(curl -o "$BODY" -s -w "%{http_code} %{time_starttransfer}" \
-      -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36" \
+      -A "SenPlayer/2.5.0 (iPhone; iOS 18.0)" \
       -L --max-redirs 3 --max-time 8 "$EMBY/emby/system/info/public" 2>/dev/null)
     local CODE=${R%% *}; local TTFB=${R##* }
     if [ "$CODE" = 200 ]; then
@@ -95,7 +95,7 @@ print(f\"  IP: {d.get('ip')}  ({d.get('city','')}, {d.get('country')})  {d.get('
   if [ $OK -eq 0 ]; then
     if rg -qi '请求拦截|已被拦截|Just a moment|challenge' "$BODY" 2>/dev/null; then
       echo -e "  ${C_Y}⚠ 源站 WAF 拦截探测请求（页面: 请求拦截/challenge）${C_0}"
-      echo -e "  ${C_Y}  → 不代表封地区; 真实 Emby 客户端带正常 UA/参数可能可过${C_0}"
+      echo -e "  ${C_Y}  → 连 SenPlayer UA 都被拦, 严格 WAF; 换 Emby 客户端原 UA 再试或问服主${C_0}"
     else
       echo "  响应体: $(head -c 120 "$BODY" 2>/dev/null)"
       echo -e "  ${C_R}✗ 全部失败: 地区封禁 / 服务异常${C_0}"
