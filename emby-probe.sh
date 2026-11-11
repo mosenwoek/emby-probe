@@ -83,7 +83,7 @@ print(f\"  IP: {d.get('ip')}  ({d.get('city','')}, {d.get('country')})  {d.get('
   # 部分源站 WAF 拦浏览器/curl UA（"请求携带恶意参数已被拦截"）— 用 SenPlayer UA（Emby 播放器, 封浏览器 UA 的服也放行播放器客户端）
   for i in 1 2 3 4 5; do
     local R=$(curl -o "$BODY" -s -w "%{http_code} %{time_starttransfer}" \
-      -A "SenPlayer/2.5.0 (iPhone; iOS 18.0)" \
+      -A "SenPlayer/6.2.3 (iPhone; iOS 18.0)" \
       -L --max-redirs 3 --max-time 8 "$EMBY/emby/system/info/public" 2>/dev/null)
     local CODE=${R%% *}; local TTFB=${R##* }
     if [ "$CODE" = 200 ]; then
