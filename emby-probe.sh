@@ -23,6 +23,7 @@ if [ ${#ADDRS[@]} -eq 0 ]; then
   i=1
   while :; do
     read -r -p "  地址 #$i: " a
+    a=$(printf '%s' "$a" | tr -d '\r')
     [ -z "$a" ] && break
     [ "$a" = q ] && exit 0
     ADDRS+=("$a"); i=$((i+1))
