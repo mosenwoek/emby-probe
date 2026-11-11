@@ -19,15 +19,22 @@ ADDRS=()
 if [ $# -gt 0 ]; then ADDRS=("$@"); fi
 if [ ${#ADDRS[@]} -eq 0 ] && [ -n "${EMBY_LIST:-}" ]; then ADDRS=($EMBY_LIST); fi
 if [ ${#ADDRS[@]} -eq 0 ]; then
-  echo -e "${C_BD}Emby 反代节点体检${C_0} — 输入 Emby 地址（空行开始测试, q 退出）"
-  i=1
-  while :; do
-    read -r -p "  地址 #$i: " a
-    a=$(printf '%s' "$a" | tr -d '\r')
-    [ -z "$a" ] && break
-    [ "$a" = q ] && exit 0
-    ADDRS+=("$a"); i=$((i+1))
-  done
+  # curl|bash 时 stdin 是脚本自身, 交互输入必须改从 /dev/tty 读
+  if exec 3</dev/tty 2>/dev/null; then
+    echo -e "${C_BD}Emby 反代节点体检${C_0} — 输入 Emby 地址（空行开始测试, q 退出）"
+    i=1
+    while :; do
+      read -r -p "  地址 #$i: " a <&3 || break
+      a=$(printf '%s' "$a" | tr -d '\r')
+      [ -z "$a" ] && break
+      [ "$a" = q ] && exit 0
+      ADDRS+=("$a"); i=$((i+1))
+    done
+    exec 3<&-
+  else
+    echo "交互输入不可用(无终端), 请用参数形式: curl -fsSL <本脚本URL> | bash -s \"http://emby:8096\""
+    exit 1
+  fi
 fi
 [ ${#ADDRS[@]} -eq 0 ] && { echo "没有地址, 退出"; exit 1; }
 
