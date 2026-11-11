@@ -81,6 +81,7 @@ print(f\"  IP: {d.get('ip')}  ({d.get('city','')}, {d.get('country')})  {d.get('
   local OK=0; local BEST_TTFB=99
   local BODY=/tmp/probe_body.$$
   # 部分源站 WAF 拦浏览器/curl UA（"请求携带恶意参数已被拦截"）— 用 SenPlayer UA（Emby 播放器, 封浏览器 UA 的服也放行播放器客户端）
+  # 两轮探测: 第一轮 /emby/system/info/public；若 404（非 403, WAF 与路径不存在区分）补一轮 Emby 规范大小写 /emby/System/Info/Public
   for i in 1 2 3 4 5; do
     local R=$(curl -o "$BODY" -s -w "%{http_code} %{time_starttransfer}" \
       -A "SenPlayer/6.2.3 (iPhone; iOS 18.0)" \
@@ -91,6 +92,25 @@ print(f\"  IP: {d.get('ip')}  ({d.get('city','')}, {d.get('country')})  {d.get('
       num_lt "$TTFB" "$BEST_TTFB" && BEST_TTFB=$TTFB
     fi
   done
+  if [ $OK -eq 0 ]; then
+    local R2=$(curl -o "$BODY" -s -w "%{http_code} %{time_starttransfer}" \
+      -A "SenPlayer/6.2.3 (iPhone; iOS 18.0)" \
+      -L --max-redirs 3 --max-time 8 "$EMBY/emby/System/Info/Public" 2>/dev/null)
+    local CODE2=${R2%% *}
+    if [ "$CODE2" = 200 ]; then
+      echo -e "  ${C_Y}ℹ 此源站要求 Emby 规范路径大小写 (/emby/System/Info/Public), 已按此探测:${C_0}"
+      for i in 1 2 3 4 5; do
+        R2=$(curl -o "$BODY" -s -w "%{http_code} %{time_starttransfer}" \
+          -A "SenPlayer/6.2.3 (iPhone; iOS 18.0)" \
+          -L --max-redirs 3 --max-time 8 "$EMBY/emby/System/Info/Public" 2>/dev/null)
+        local CODE2=${R2%% *}; local TTFB2=${R2##* }
+        if [ "$CODE2" = 200 ]; then
+          OK=$((OK+1))
+          num_lt "$TTFB2" "$BEST_TTFB" && BEST_TTFB=$TTFB2
+        fi
+      done
+    fi
+  fi
   echo "  成功率: $OK/5   最优 TTFB: ${BEST_TTFB}s"
   if [ $OK -eq 0 ]; then
     if rg -qi '请求拦截|已被拦截|Just a moment|challenge' "$BODY" 2>/dev/null; then
@@ -98,7 +118,8 @@ print(f\"  IP: {d.get('ip')}  ({d.get('city','')}, {d.get('country')})  {d.get('
       echo -e "  ${C_Y}  → 连 SenPlayer UA 都被拦, 严格 WAF; 换 Emby 客户端原 UA 再试或问服主${C_0}"
     else
       echo "  响应体: $(head -c 120 "$BODY" 2>/dev/null)"
-      echo -e "  ${C_R}✗ 全部失败: 地区封禁 / 服务异常${C_0}"
+      echo -e "  ${C_R}✗ 全部失败: 路径不对 / 地区封禁 / 服务异常${C_0}"
+      echo -e "  ${C_Y}  提示: 404 多半是 API 路径/前缀不同, 确认地址里是否该带 /emby 前缀或别的基路径${C_0}"
     fi
     echo -e "  ${C_BD}结论: ⚠ 受限/不可用${C_0}"; rm -f "$BODY"; return 2
   elif [ $OK -lt 5 ]; then
